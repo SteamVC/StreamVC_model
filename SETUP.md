@@ -245,7 +245,9 @@ tail -f train.log
 
 ```bash
 # 別ターミナルで実行
-tensorboard --logdir runs/my_experiment/logs
+tensorboard --logdir runs/streamvc_test/logs
+       --port 6006 --host 0.0.0.0 2>&1 &
+      echo "TensorBoard started on http://localhost:6006"
 
 # ブラウザで開く
 open http://localhost:6006

@@ -29,20 +29,29 @@ class ResidualVectorQuantizer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
+        # x: (B, T, C)
         residual = x
         quantized = torch.zeros_like(x)
         commitment_loss = 0.0
         codes: List[torch.Tensor] = []
+
         for codebook in self.codebooks:
-            distances = (
-                residual.unsqueeze(-2) - codebook.unsqueeze(0).unsqueeze(0)
-            ).pow(2).sum(-1)
-            indices = torch.argmin(distances, dim=-1)
+            # Memory-efficient distance calculation using ||x - c||^2 = ||x||^2 + ||c||^2 - 2<x,c>
+            residual_flat = residual.reshape(-1, residual.shape[-1])  # (B*T, C)
+            residual_sq = residual_flat.pow(2).sum(dim=-1, keepdim=True)  # (B*T, 1)
+            codebook_sq = codebook.pow(2).sum(dim=-1, keepdim=True)  # (K, 1)
+            dot_product = torch.matmul(residual_flat, codebook.t())  # (B*T, K)
+            distances = residual_sq + codebook_sq.t() - 2 * dot_product  # (B*T, K)
+
+            indices = torch.argmin(distances, dim=-1)  # (B*T,)
+            indices = indices.reshape(residual.shape[0], residual.shape[1])  # (B, T)
             codes.append(indices)
-            embeds = F.embedding(indices, codebook)
+
+            embeds = F.embedding(indices, codebook)  # (B, T, C)
             quantized = quantized + embeds
             residual = residual - embeds
             commitment_loss = commitment_loss + (residual.detach() - embeds).pow(2).mean()
+
         quantized = x + (quantized - x).detach()
         return quantized, commitment_loss * self.config.commitment_cost, codes
 

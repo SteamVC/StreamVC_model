@@ -63,6 +63,15 @@ def log_stft_magnitude(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor
 
 
 def content_loss(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    # logits: (B, T_logits, C), labels: (B, T_labels)
+    # Interpolate logits to match labels length
+    if logits.shape[1] != labels.shape[1]:
+        logits = F.interpolate(
+            logits.transpose(1, 2),  # (B, C, T)
+            size=labels.shape[1],
+            mode='linear',
+            align_corners=False
+        ).transpose(1, 2)  # (B, T_labels, C)
     return F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1))
 
 

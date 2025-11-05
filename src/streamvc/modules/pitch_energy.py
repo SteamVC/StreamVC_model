@@ -49,26 +49,25 @@ class PitchEnergyExtractor(nn.Module):
 
         if audio.dim() != 2:
             raise ValueError("audio must be (B, T)")
-        pitches = []
-        voiced_probs = []
+
+        # Batch process pitch detection
+        frame_time_sec = self.hop_length / self.sample_rate
+        f0 = AF.detect_pitch_frequency(
+            audio,
+            sample_rate=self.sample_rate,
+            frame_time=frame_time_sec,
+            win_length=30,  # median smoothing window (frames, not samples)
+        )  # (B, num_frames)
+
+        voiced_prob = (f0 > 0).float()
+
+        # Batch process energy extraction
+        # unfold doesn't work directly on batches, so we need to process each sample
         energies = []
         for wav in audio:
-            # frame_time is in seconds for the API
-            frame_time_sec = self.hop_length / self.sample_rate
-            pitch = AF.detect_pitch_frequency(
-                wav.unsqueeze(0),
-                sample_rate=self.sample_rate,
-                frame_time=frame_time_sec,
-                win_length=30,  # median smoothing window (frames, not samples)
-            ).squeeze(0)
-            pitches.append(pitch)
-            voiced = (pitch > 0).float()
-            voiced_probs.append(voiced)
             frames = wav.unfold(0, self.frame_length, self.hop_length)
             energy = frames.pow(2).mean(dim=-1)
             energies.append(energy)
-        f0 = torch.nn.utils.rnn.pad_sequence(pitches, batch_first=True)
-        voiced_prob = torch.nn.utils.rnn.pad_sequence(voiced_probs, batch_first=True)
         energy = torch.nn.utils.rnn.pad_sequence(energies, batch_first=True)
 
         if mode == "train":

@@ -1,5 +1,5 @@
 experiment:
-  name: streamvc_test
+  name: streamvc_cpu_full
   seed: 1234
 
 data:
@@ -38,7 +38,7 @@ model:
   decoder:
     channels: 40
     latent_dim: 64
-    upsample_factors: [2, 2, 2]  # Match content_encoder stride_schedule for 8x upsampling
+    upsample_factors: [2, 2, 2]  # Match encoder stride for correct output size
     kernel_size: 7
     num_residual_blocks: 3
     rvq:
@@ -48,8 +48,8 @@ model:
       commitment_cost: 0.25
 
 training:
-  batch_size: 4
-  num_steps: 100
+  batch_size: 4  # Smaller batch for CPU
+  num_steps: 400000
   optimizer:
     type: adamw
     lr: 0.0001
@@ -59,12 +59,12 @@ training:
     content_ce_weight: 1.0
     stft_weight: 1.0
     l1_weight: 10.0
-    adversarial_weight: 4.0
-    feature_matching_weight: 2.0
+    adversarial_weight: 0.0  # No discriminator for CPU training
+    feature_matching_weight: 0.0
   log_interval: 10
-  eval_interval: 50
-  ckpt_interval: 1000
-  output_dir: runs/streamvc_test
+  eval_interval: 1000
+  ckpt_interval: 1000  # Checkpoint every 1000 steps for speed monitoring
+  output_dir: runs/streamvc_cpu_full
 
 inference:
   chunk_ms: 20.0

@@ -53,6 +53,13 @@ class StreamVCTrainer:
         target_wave = batch["target_wave"].to(self.device)
         outputs = self.pipeline(source, target_reference, mode="train")
         generated = outputs["audio"]
+        # Match generated audio length to target
+        if generated.shape[1] != target_wave.shape[1]:
+            if generated.shape[1] > target_wave.shape[1]:
+                generated = generated[:, :target_wave.shape[1]]
+            else:
+                padding = target_wave.shape[1] - generated.shape[1]
+                generated = torch.nn.functional.pad(generated, (0, padding))
         ce = content_loss(outputs["content_logits"], hubert_labels)
         l1 = torch.nn.functional.l1_loss(generated, target_wave)
         stft = multi_resolution_stft_loss(generated, target_wave)
