@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "streamvc"
+version = "0.1.0"
+description = "StreamVC: Real-time any-to-many voice conversion"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "torch",
+    "torchaudio",
+    "tensorboard",
+    "joblib",
+    "PyYAML",
+    "soundfile",
+    "tqdm",
+    "pandas",
+    "huggingface_hub",
+    "datasets",
+    "fairseq",
+    "librosa",
+    "omegaconf",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+    "mypy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+streamvc = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

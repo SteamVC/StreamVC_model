@@ -1,0 +1,24 @@
+Metadata-Version: 2.4
+Name: streamvc
+Version: 0.1.0
+Summary: StreamVC: Real-time any-to-many voice conversion
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: torch
+Requires-Dist: torchaudio
+Requires-Dist: tensorboard
+Requires-Dist: joblib
+Requires-Dist: PyYAML
+Requires-Dist: soundfile
+Requires-Dist: tqdm
+Requires-Dist: pandas
+Requires-Dist: huggingface_hub
+Requires-Dist: datasets
+Requires-Dist: fairseq
+Requires-Dist: librosa
+Requires-Dist: omegaconf
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: isort; extra == "dev"
+Requires-Dist: mypy; extra == "dev"

@@ -1,0 +1,74 @@
+experiment:
+  name: streamvc_test
+  seed: 1234
+
+data:
+  sample_rate: 16000
+  frame_ms: 20.0
+  lookahead_frames: 3
+  cache_dir: data/cache
+  datasets:
+    - name: libri_tts
+      root: data/libritts
+      language: en
+      metadata: data/libritts/metadata.jsonl
+      weight: 1.0
+  sample_length_sec: 1.28
+  reference_length_sec: 1.0
+  hubert_cache: data/cache/hubert
+  yin_cache: data/cache/yin
+
+model:
+  num_hubert_labels: 100
+  content_encoder:
+    channels: 64
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 7
+    stride_schedule: [2, 2, 2]
+    dilation_growth: 2
+    dropout: 0.1
+  speaker_encoder:
+    channels: 32
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 5
+    stride_schedule: [2, 2]
+    dilation_growth: 2
+  decoder:
+    channels: 40
+    latent_dim: 64
+    upsample_factors: [2, 2, 2, 2]
+    kernel_size: 7
+    num_residual_blocks: 3
+    rvq:
+      num_quantizers: 8
+      codebook_size: 1024
+      dims: 40  # must match decoder channels
+      commitment_cost: 0.25
+
+training:
+  batch_size: 4
+  num_steps: 100
+  optimizer:
+    type: adamw
+    lr: 0.0001
+    betas: [0.9, 0.99]
+    weight_decay: 0.0
+  losses:
+    content_ce_weight: 1.0
+    stft_weight: 1.0
+    l1_weight: 10.0
+    adversarial_weight: 4.0
+    feature_matching_weight: 2.0
+  log_interval: 10
+  eval_interval: 50
+  ckpt_interval: 1000
+  output_dir: runs/streamvc_test
+
+inference:
+  chunk_ms: 20.0
+  quantize: false
+  export:
+    tflite: false
+    onnx: false

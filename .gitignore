@@ -1,0 +1,16 @@
+.venv/*
+data/cache/
+data/libritts/
+data/vctk/
+data/jvs/
+runs/*
+
+*.log
+*.pt
+*.joblib
+*.pth
+*.onnx
+*.tflite
+*.wav
+*.mp3
+*.m4a
