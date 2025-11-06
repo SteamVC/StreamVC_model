@@ -43,6 +43,7 @@ class TrainingConfig:
     eval_interval: int
     ckpt_interval: int
     output_dir: str
+    scheduler: Dict[str, Any] = None
 
 
 @dataclass

@@ -78,7 +78,9 @@ def build_dataloader(
 
     if shuffle:
         weights_tensor = torch.tensor(sample_weights, dtype=torch.double)
-        sampler = WeightedRandomSampler(weights_tensor, num_samples=len(sample_weights), replacement=True)
+        # num_samples should be num_steps * batch_size to ensure enough samples for training
+        num_samples = config.training.num_steps * batch
+        sampler = WeightedRandomSampler(weights_tensor, num_samples=num_samples, replacement=True)
         loader = DataLoader(merged, batch_size=batch, sampler=sampler, collate_fn=_collate_fn)
     else:
         loader = DataLoader(merged, batch_size=batch, shuffle=False, collate_fn=_collate_fn)

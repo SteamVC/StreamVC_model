@@ -53,8 +53,10 @@ def multi_resolution_stft_loss(
 
 
 def spectral_convergence(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    num = torch.linalg.norm(target - pred)
-    den = torch.linalg.norm(target)
+    # Use magnitude for complex tensors (MPS compatible)
+    diff = torch.abs(target) - torch.abs(pred)
+    num = torch.norm(diff)
+    den = torch.norm(torch.abs(target))
     return num / (den + 1e-9)
 
 

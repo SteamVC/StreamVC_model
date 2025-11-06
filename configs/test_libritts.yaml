@@ -64,7 +64,7 @@ training:
   log_interval: 10
   eval_interval: 50
   ckpt_interval: 1000
-  output_dir: runs/streamvc_test
+  output_dir: runs/streamvc_clean100
 
 inference:
   chunk_ms: 20.0

@@ -16,7 +16,7 @@ from streamvc.data import build_dataloader
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train StreamVC")
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
-    parser.add_argument("--device", type=str, default="cuda", help="cuda or cpu")
+    parser.add_argument("--device", type=str, default="cuda", help="cuda, mps, or cpu")
     parser.add_argument("--eval", action="store_true", help="build eval loader")
     return parser.parse_args()
 
@@ -38,8 +38,8 @@ def main() -> None:
     eval_loader = build_dataloader(config, split="valid", shuffle=False) if args.eval else None
 
     trainer = StreamVCTrainer(config)
-    if args.device == "cpu":
-        trainer.device = torch.device("cpu")
+    if args.device in ("cpu", "mps"):
+        trainer.device = torch.device(args.device)
         trainer.pipeline.to(trainer.device)
         if trainer.discriminator is not None:
             trainer.discriminator.to(trainer.device)

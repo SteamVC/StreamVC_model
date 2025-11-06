@@ -33,6 +33,7 @@ class StreamVCTrainer:
         if self.discriminator is not None:
             self.discriminator.to(self.device)
         self.optimizer = self._build_optimizer()
+        self.scheduler = self._build_scheduler()
         self.step = 0
         self.writer: Optional[SummaryWriter] = None
 
@@ -45,6 +46,47 @@ class StreamVCTrainer:
         if opt_type == "adam":
             return torch.optim.Adam(params, lr=opt_cfg["lr"], betas=tuple(opt_cfg.get("betas", (0.9, 0.999))))
         raise ValueError(f"Unsupported optimizer type: {opt_cfg['type']}")
+
+    def _build_scheduler(self):
+        """Build learning rate scheduler with warmup support."""
+        scheduler_cfg = self.config.training.scheduler
+        if not scheduler_cfg or scheduler_cfg.get("type", "none") == "none":
+            return None
+
+        sched_type = scheduler_cfg["type"].lower()
+        warmup_steps = scheduler_cfg.get("warmup_steps", 0)
+
+        if sched_type == "cosine":
+            # Cosine annealing with warmup
+            total_steps = self.config.training.num_steps
+            eta_min = scheduler_cfg.get("eta_min", 1e-6)
+            base_lr = self.config.training.optimizer["lr"]
+
+            # Create warmup + cosine scheduler
+            def lr_lambda(current_step: int) -> float:
+                if current_step < warmup_steps:
+                    # Linear warmup: 0 → 1
+                    return max(float(current_step) / float(max(1, warmup_steps)), 1e-8)
+                # Cosine annealing after warmup: 1 → eta_min/base_lr
+                progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+                cosine_decay = 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.141592653589793)).item())
+                return max(eta_min / base_lr, cosine_decay)
+
+            return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
+
+        elif sched_type == "linear":
+            # Linear decay with warmup
+            total_steps = self.config.training.num_steps
+
+            def lr_lambda(current_step: int) -> float:
+                if current_step < warmup_steps:
+                    return float(current_step) / float(max(1, warmup_steps))
+                return max(0.0, float(total_steps - current_step) / float(max(1, total_steps - warmup_steps)))
+
+            return torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
+
+        else:
+            raise ValueError(f"Unsupported scheduler type: {sched_type}")
 
     def train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         source = batch["source_audio"].to(self.device)
@@ -97,8 +139,13 @@ class StreamVCTrainer:
             metrics["loss"].backward()
             torch.nn.utils.clip_grad_norm_(self.pipeline.parameters(), max_norm=1.0)
             self.optimizer.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
             if self.writer is not None and self.step % self.config.training.log_interval == 0:
                 self._log_metrics(metrics)
+                # Log learning rate
+                if self.scheduler is not None:
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.step)
             self.step += 1
             if self.step % self.config.training.eval_interval == 0 and eval_loader is not None:
                 self.evaluate(eval_loader)
@@ -138,6 +185,8 @@ class StreamVCTrainer:
             "optimizer": self.optimizer.state_dict(),
             "step": self.step,
         }
+        if self.scheduler is not None:
+            state["scheduler"] = self.scheduler.state_dict()
         if self.discriminator is not None:
             state["discriminator"] = self.discriminator.state_dict()
         torch.save(state, path)
@@ -147,6 +196,8 @@ class StreamVCTrainer:
         self.pipeline.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         self.step = state.get("step", 0)
+        if self.scheduler is not None and "scheduler" in state:
+            self.scheduler.load_state_dict(state["scheduler"])
         if self.discriminator is not None and "discriminator" in state:
             self.discriminator.load_state_dict(state["discriminator"])
 

@@ -1,5 +1,5 @@
 experiment:
-  name: streamvc_base
+  name: streamvc_mps_clean100
   seed: 1234
 
 data:
@@ -13,16 +13,6 @@ data:
       language: en
       metadata: data/libritts/metadata.jsonl
       weight: 1.0
-    - name: vctk
-      root: data/vctk
-      language: en
-      metadata: data/vctk/metadata.jsonl
-      weight: 0.5
-    - name: jvs
-      root: data/jvs
-      language: ja
-      metadata: data/jvs/metadata.jsonl
-      weight: 0.75
   sample_length_sec: 1.28
   reference_length_sec: 1.0
   hubert_cache: data/cache/hubert
@@ -48,37 +38,37 @@ model:
   decoder:
     channels: 40
     latent_dim: 64
-    upsample_factors: [2, 2, 2, 2]
+    upsample_factors: [2, 2, 2]
     kernel_size: 7
     num_residual_blocks: 3
     rvq:
       num_quantizers: 8
       codebook_size: 1024
-      dims: 8
+      dims: 40
       commitment_cost: 0.25
 
 training:
-  batch_size: 16
-  num_steps: 400000
+  batch_size: 8
+  num_steps: 50000
   optimizer:
     type: adamw
     lr: 0.0001
     betas: [0.9, 0.99]
     weight_decay: 0.0
   scheduler:
-    type: cosine  # Options: cosine, linear, none
+    type: cosine
     warmup_steps: 2000
-    eta_min: 0.000001  # Minimum learning rate for cosine scheduler
+    eta_min: 0.000001
   losses:
     content_ce_weight: 1.0
     stft_weight: 1.0
     l1_weight: 10.0
     adversarial_weight: 4.0
     feature_matching_weight: 2.0
-  log_interval: 50
+  log_interval: 100
   eval_interval: 1000
   ckpt_interval: 5000
-  output_dir: runs/streamvc_base
+  output_dir: runs/streamvc_mps_clean100
 
 inference:
   chunk_ms: 20.0
@@ -86,4 +76,3 @@ inference:
   export:
     tflite: false
     onnx: false
-

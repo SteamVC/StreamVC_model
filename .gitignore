@@ -5,6 +5,7 @@ data/vctk/
 data/jvs/
 runs/*
 
+*.pid
 *.log
 *.pt
 *.joblib
