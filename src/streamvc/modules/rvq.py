@@ -50,7 +50,7 @@ class ResidualVectorQuantizer(nn.Module):
             embeds = F.embedding(indices, codebook)  # (B, T, C)
             quantized = quantized + embeds
             residual = residual - embeds
-            commitment_loss = commitment_loss + (residual.detach() - embeds).pow(2).mean()
+            commitment_loss = commitment_loss + (residual - embeds.detach()).pow(2).mean()
 
         quantized = x + (quantized - x).detach()
         return quantized, commitment_loss * self.config.commitment_cost, codes
