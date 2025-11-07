@@ -188,3 +188,83 @@ def multiband_rms_loss(
     return torch.stack(losses).mean()
 
 
+def discriminator_loss(
+    disc_real_outputs: list[torch.Tensor],
+    disc_fake_outputs: list[torch.Tensor],
+) -> torch.Tensor:
+    """
+    LSGAN-style discriminator loss.
+
+    Trains discriminator to distinguish real (target=1) from fake (target=0) audio.
+
+    Args:
+        disc_real_outputs: List of discriminator outputs for real audio (each scale/period)
+        disc_fake_outputs: List of discriminator outputs for fake audio (each scale/period)
+
+    Returns:
+        Discriminator loss (MSE between predictions and targets)
+    """
+    loss = 0
+    for dr, df in zip(disc_real_outputs, disc_fake_outputs):
+        # Real should be close to 1
+        loss_real = torch.mean((dr - 1) ** 2)
+        # Fake should be close to 0
+        loss_fake = torch.mean(df ** 2)
+        loss += loss_real + loss_fake
+
+    return loss / len(disc_real_outputs)
+
+
+def generator_adversarial_loss(
+    disc_fake_outputs: list[torch.Tensor],
+) -> torch.Tensor:
+    """
+    LSGAN-style generator adversarial loss.
+
+    Trains generator to fool discriminator (make fake audio look real).
+
+    Args:
+        disc_fake_outputs: List of discriminator outputs for generated audio
+
+    Returns:
+        Generator adversarial loss (MSE between predictions and target=1)
+    """
+    loss = 0
+    for df in disc_fake_outputs:
+        # Generator wants fake to be close to 1 (fool discriminator)
+        loss += torch.mean((df - 1) ** 2)
+
+    return loss / len(disc_fake_outputs)
+
+
+def feature_matching_loss(
+    real_features_list: list[list[torch.Tensor]],
+    fake_features_list: list[list[torch.Tensor]],
+) -> torch.Tensor:
+    """
+    Feature matching loss (SoundStream/HiFi-GAN style).
+
+    Matches intermediate feature maps between real and fake audio.
+    This helps generator learn perceptually similar features beyond just
+    fooling the discriminator.
+
+    Args:
+        real_features_list: List of feature lists for each discriminator scale/period
+        fake_features_list: List of feature lists for each discriminator scale/period
+
+    Returns:
+        L1 loss between real and fake features (averaged across all layers)
+    """
+    loss = 0
+    num_features = 0
+
+    for real_feats, fake_feats in zip(real_features_list, fake_features_list):
+        for real_feat, fake_feat in zip(real_feats, fake_feats):
+            # Feature matching uses detached real features (stop gradient)
+            loss += F.l1_loss(fake_feat, real_feat.detach())
+            num_features += 1
+
+    # Normalize by total number of feature maps
+    return loss / max(num_features, 1)
+
+

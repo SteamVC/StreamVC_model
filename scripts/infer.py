@@ -30,6 +30,13 @@ def load_checkpoint(checkpoint_path: Path, config, device):
 
     pipeline = StreamVCPipeline(config, num_hubert_labels=num_hubert_labels)
     pipeline.load_state_dict(checkpoint["model"])
+
+    # Restore active quantizers for progressive RVQ
+    if "num_active_quantizers" in checkpoint:
+        num_active = checkpoint["num_active_quantizers"]
+        pipeline.decoder.rvq.set_num_active_quantizers(num_active)
+        print(f"  Progressive RVQ: {num_active} / {pipeline.decoder.rvq.config.num_quantizers} quantizers active")
+
     pipeline.to(device)
     pipeline.eval()
 

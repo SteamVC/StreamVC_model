@@ -19,6 +19,10 @@ class ResidualVQConfig:
     progressive_steps: int = 2000  # Steps per quantizer activation
     use_cosine_sim: bool = False  # Phase A: Back to L2 distance
     use_ste_fix: bool = True  # Phase A: STE consistency fix
+    # Phase 1-EMA: Exponential Moving Average update
+    use_ema: bool = False  # Enable EMA-based codebook update (DAC-style)
+    ema_decay: float = 0.99  # EMA decay rate (0.99 recommended)
+    dead_threshold: int = 100  # Minimum usage count to avoid dead code reset
 
 
 class ResidualVectorQuantizer(nn.Module):
@@ -45,6 +49,16 @@ class ResidualVectorQuantizer(nn.Module):
         # Phase 2A: Learnable scale for cosine similarity VQ (deprecated)
         if config.use_cosine_sim:
             self.scale = nn.Parameter(torch.ones(config.num_quantizers))
+
+        # Phase 1-EMA: EMA buffers for codebook update
+        if config.use_ema:
+            # cluster_size: (num_quantizers, codebook_size) - tracks usage count per code
+            self.register_buffer('cluster_size', torch.zeros(config.num_quantizers, config.codebook_size))
+            # embed_avg: (num_quantizers, codebook_size, dims) - tracks sum of embeddings per code
+            self.register_buffer('embed_avg', torch.zeros(config.num_quantizers, config.codebook_size, config.dims))
+            # Initialize embed_avg with codebook values
+            for q_idx in range(config.num_quantizers):
+                self.embed_avg[q_idx].copy_(self.codebooks[q_idx].data)
 
     def set_num_active_quantizers(self, num: int) -> None:
         """Set number of active quantizers for progressive training."""
@@ -83,6 +97,10 @@ class ResidualVectorQuantizer(nn.Module):
 
                 embeds = F.embedding(indices, codebook)  # (B, T, C)
 
+                # Phase 1-EMA: Update codebook using EMA (if enabled and in training mode)
+                if self.config.use_ema and self.training:
+                    self.ema_update(q_idx, indices.reshape(-1), residual_flat)
+
             if self.config.use_ste_fix:
                 # Phase A: STE in same coordinate space (normalized)
                 embeds_st = residual + (embeds - residual).detach()
@@ -106,5 +124,75 @@ class ResidualVectorQuantizer(nn.Module):
             # Original STE (coordinate mismatch)
             quantized = x + (quantized_sum - x).detach()
             return quantized, commitment_loss * self.config.commitment_cost, codes
+
+    def ema_update(self, q_idx: int, indices: torch.Tensor, flat_input: torch.Tensor) -> None:
+        """
+        Update codebook using Exponential Moving Average (DAC-style).
+        Memory-efficient version using scatter operations.
+
+        Args:
+            q_idx: Quantizer index (0-7)
+            indices: (B*T,) Code indices selected for this quantizer
+            flat_input: (B*T, C) Input vectors before quantization
+        """
+        if not self.config.use_ema or not self.training:
+            return
+
+        decay = self.config.ema_decay
+
+        with torch.no_grad():
+            # First apply decay to existing values
+            self.cluster_size[q_idx].mul_(decay)
+            self.embed_avg[q_idx].mul_(decay)
+
+            # Count usage per code using bincount (much faster than loop)
+            cluster_size_update = torch.bincount(
+                indices,
+                minlength=self.config.codebook_size
+            ).float()
+
+            # Compute sum of embeddings per code using index_add_
+            embed_sum = torch.zeros_like(self.embed_avg[q_idx])
+            # Use scatter_add for efficiency
+            indices_expanded = indices.unsqueeze(1).expand(-1, flat_input.shape[1])
+            embed_sum.scatter_add_(0, indices_expanded, flat_input)
+
+            # EMA update
+            self.cluster_size[q_idx].add_(cluster_size_update, alpha=1 - decay)
+            self.embed_avg[q_idx].add_(embed_sum, alpha=1 - decay)
+
+            # Update codebook
+            n = self.cluster_size[q_idx].unsqueeze(1).clamp(min=1.0)  # Avoid division by zero
+            updated_codebook = self.embed_avg[q_idx] / n
+            self.codebooks[q_idx].data.copy_(updated_codebook)
+
+    def reset_dead_codes(self, q_idx: int) -> int:
+        """
+        Reset codes with low usage count (dead codes).
+
+        Args:
+            q_idx: Quantizer index (0-7)
+
+        Returns:
+            Number of dead codes that were reset
+        """
+        if not self.config.use_ema or not self.training:
+            return 0
+
+        threshold = self.config.dead_threshold
+        mask = self.cluster_size[q_idx] < threshold
+        num_dead = mask.sum().item()
+
+        if num_dead > 0:
+            with torch.no_grad():
+                # Reinitialize dead codes with small random values
+                self.codebooks[q_idx].data[mask] = torch.randn(
+                    num_dead, self.config.dims, device=self.codebooks[q_idx].device
+                ) * 0.01
+                # Reset EMA buffers for dead codes
+                self.cluster_size[q_idx][mask] = 0
+                self.embed_avg[q_idx][mask] = 0
+
+        return num_dead
 
 

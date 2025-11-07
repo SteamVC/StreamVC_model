@@ -11,6 +11,7 @@ import torch
 
 from streamvc import StreamVCTrainer, load_config
 from streamvc.data import build_dataloader
+from streamvc.modules.discriminator import MultiScaleDiscriminator
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,7 +38,13 @@ def main() -> None:
     train_loader = build_dataloader(config, split="train")
     eval_loader = build_dataloader(config, split="valid", shuffle=False) if args.eval else None
 
-    trainer = StreamVCTrainer(config)
+    # Initialize discriminator if GAN training is enabled
+    discriminator = None
+    if config.training.losses.get("adversarial_weight", 0.0) > 0:
+        discriminator = MultiScaleDiscriminator()
+        print(f"Initialized Multi-Scale Discriminator (3 scales)")
+
+    trainer = StreamVCTrainer(config, discriminator=discriminator)
     if args.device in ("cpu", "mps"):
         trainer.device = torch.device(args.device)
         trainer.pipeline.to(trainer.device)

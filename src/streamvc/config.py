@@ -44,6 +44,8 @@ class TrainingConfig:
     ckpt_interval: int
     output_dir: str
     scheduler: Dict[str, Any] = None
+    gan_warmup_steps: int = 2000
+    gan_rampup_steps: int = 2000
 
 
 @dataclass
