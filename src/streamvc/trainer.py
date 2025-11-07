@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from .config import StreamVCConfig
 from .pipeline import StreamVCPipeline
-from .losses import LossWeights, content_loss, multi_resolution_stft_loss
+from .losses import LossWeights, content_loss, multi_resolution_stft_loss, frame_rms_loss, multiband_rms_loss
 
 
 class StreamVCTrainer:
@@ -26,6 +26,8 @@ class StreamVCTrainer:
             l1=config.training.losses.get("l1_weight", 10.0),
             adversarial=config.training.losses.get("adversarial_weight", 0.0),
             feature_matching=config.training.losses.get("feature_matching_weight", 0.0),
+            rms=config.training.losses.get("rms_weight", 0.1),
+            multiband_rms=config.training.losses.get("multiband_rms_weight", 0.05),
         )
         self.discriminator = discriminator
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,12 +41,27 @@ class StreamVCTrainer:
 
     def _build_optimizer(self) -> Optimizer:
         opt_cfg = self.config.training.optimizer
-        params = self.pipeline.parameters()
         opt_type = opt_cfg["type"].lower()
+
+        # Phase A: Separate parameter groups for out_proj and final_conv (no weight decay)
+        protected_params = []
+        other_params = []
+
+        for name, param in self.pipeline.named_parameters():
+            if 'decoder.out_proj' in name or 'decoder.rvq.final_conv' in name:
+                protected_params.append(param)
+            else:
+                other_params.append(param)
+
+        param_groups = [
+            {'params': other_params, 'weight_decay': opt_cfg.get("weight_decay", 0.0)},
+            {'params': protected_params, 'weight_decay': 0.0},  # No decay for output layers
+        ]
+
         if opt_type == "adamw":
-            return torch.optim.AdamW(params, lr=opt_cfg["lr"], betas=tuple(opt_cfg.get("betas", (0.9, 0.99))), weight_decay=opt_cfg.get("weight_decay", 0.0))
+            return torch.optim.AdamW(param_groups, lr=opt_cfg["lr"], betas=tuple(opt_cfg.get("betas", (0.9, 0.99))))
         if opt_type == "adam":
-            return torch.optim.Adam(params, lr=opt_cfg["lr"], betas=tuple(opt_cfg.get("betas", (0.9, 0.999))))
+            return torch.optim.Adam(param_groups, lr=opt_cfg["lr"], betas=tuple(opt_cfg.get("betas", (0.9, 0.999))))
         raise ValueError(f"Unsupported optimizer type: {opt_cfg['type']}")
 
     def _build_scheduler(self):
@@ -106,17 +123,58 @@ class StreamVCTrainer:
         l1 = torch.nn.functional.l1_loss(generated, target_wave)
         stft = multi_resolution_stft_loss(generated, target_wave)
         rvq = outputs["rvq_loss"]
+
+        # Phase A: RMS supervision
+        rms = frame_rms_loss(generated, target_wave) if self.loss_weights.rms > 0 else torch.tensor(0.0, device=generated.device)
+        multiband_rms = multiband_rms_loss(generated, target_wave) if self.loss_weights.multiband_rms > 0 else torch.tensor(0.0, device=generated.device)
+
         total = (
             self.loss_weights.content_ce * ce
             + self.loss_weights.l1 * l1
             + self.loss_weights.stft * stft
             + rvq
+            + self.loss_weights.rms * rms
+            + self.loss_weights.multiband_rms * multiband_rms
         )
         adv_loss = torch.tensor(0.0, device=generated.device)
         if self.discriminator is not None and self.loss_weights.adversarial > 0:
             pred_fake = self.discriminator(generated.unsqueeze(1))
             adv_loss = torch.mean((pred_fake - 1) ** 2)
             total = total + self.loss_weights.adversarial * adv_loss
+
+        # Compute RVQ diagnostics (perplexity, code usage)
+        rvq_metrics = {}
+        if "codes" in outputs:
+            codes = outputs["codes"]  # List of (B, T) tensors, one per quantizer
+            for i, code_tensor in enumerate(codes):
+                # Compute perplexity: exp(entropy)
+                # Count code usage
+                unique_codes = torch.unique(code_tensor)
+                usage_ratio = len(unique_codes) / self.pipeline.decoder.rvq.config.codebook_size
+
+                # Compute perplexity (lower is worse, ideally close to codebook_size)
+                # Perplexity = exp(entropy) where entropy = -sum(p_k * log(p_k))
+                code_counts = torch.bincount(code_tensor.flatten(), minlength=self.pipeline.decoder.rvq.config.codebook_size)
+                code_probs = code_counts.float() / code_counts.sum()
+                # Avoid log(0)
+                code_probs = code_probs[code_probs > 0]
+                entropy = -(code_probs * torch.log(code_probs)).sum()
+                perplexity = torch.exp(entropy)
+
+                rvq_metrics[f"rvq_perplexity_q{i}"] = perplexity.detach()
+                rvq_metrics[f"rvq_usage_q{i}"] = usage_ratio
+
+        # Phase A: Track out_proj and final_conv norms
+        out_proj_weight_norm = torch.norm(self.pipeline.decoder.out_proj.weight).detach()
+        out_proj_bias_norm = torch.norm(self.pipeline.decoder.out_proj.bias).detach()
+
+        final_conv_norm = torch.tensor(0.0, device=generated.device)
+        if hasattr(self.pipeline.decoder.rvq, 'final_conv'):
+            final_conv_norm = torch.norm(self.pipeline.decoder.rvq.final_conv.weight).detach()
+
+        # Audio RMS statistics
+        audio_rms_mean = torch.sqrt((generated ** 2).mean() + 1e-8).detach()
+
         return {
             "loss": total,
             "loss_content": ce.detach(),
@@ -124,6 +182,14 @@ class StreamVCTrainer:
             "loss_stft": stft.detach(),
             "loss_rvq": rvq.detach(),
             "loss_adv": adv_loss.detach(),
+            "loss_rms": rms.detach(),
+            "loss_multiband_rms": multiband_rms.detach(),
+            "pre_rvq_std": outputs["pre_rvq_std"].detach(),
+            "out_proj_weight_norm": out_proj_weight_norm,
+            "out_proj_bias_norm": out_proj_bias_norm,
+            "final_conv_norm": final_conv_norm,
+            "audio_rms_mean": audio_rms_mean,
+            **rvq_metrics,
         }
 
     def fit(self, train_loader, eval_loader=None) -> None:
@@ -133,7 +199,16 @@ class StreamVCTrainer:
         ckpt_dir = output_dir / "checkpoints"
         ckpt_dir.mkdir(exist_ok=True)
         self.pipeline.train()
+
+        # Progressive RVQ configuration
+        progressive_steps = self.pipeline.decoder.rvq.config.progressive_steps
+
         for batch in train_loader:
+            # Update active quantizers based on training step
+            if progressive_steps > 0:
+                num_active = min(1 + self.step // progressive_steps, self.pipeline.decoder.rvq.config.num_quantizers)
+                self.pipeline.decoder.rvq.set_num_active_quantizers(num_active)
+
             self.optimizer.zero_grad()
             metrics = self.train_step(batch)
             metrics["loss"].backward()
@@ -143,9 +218,11 @@ class StreamVCTrainer:
                 self.scheduler.step()
             if self.writer is not None and self.step % self.config.training.log_interval == 0:
                 self._log_metrics(metrics)
-                # Log learning rate
+                # Log learning rate and active quantizers
                 if self.scheduler is not None:
                     self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.step)
+                if progressive_steps > 0:
+                    self.writer.add_scalar("train/num_active_quantizers", self.pipeline.decoder.rvq.num_active_quantizers, self.step)
             self.step += 1
             if self.step % self.config.training.eval_interval == 0 and eval_loader is not None:
                 self.evaluate(eval_loader)
@@ -178,6 +255,8 @@ class StreamVCTrainer:
         for key, value in metrics.items():
             if torch.is_tensor(value):
                 self.writer.add_scalar(f"train/{key}", value.item(), self.step)
+            elif isinstance(value, (int, float)):
+                self.writer.add_scalar(f"train/{key}", value, self.step)
 
     def save_checkpoint(self, path: Path) -> None:
         state = {

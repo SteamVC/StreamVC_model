@@ -71,11 +71,12 @@ class StreamVCPipeline(nn.Module):
         pitch = self.pitch_extractor(source_audio, mode="train" if mode == "train" else "infer")
 
         side = self._build_side_features(pitch, units.shape[1])
-        audio, rvq_loss, codes = self.decoder(units, side, speaker_embedding)
+        audio, rvq_loss, codes, pre_norm_std = self.decoder(units, side, speaker_embedding)
 
         outputs: Dict[str, torch.Tensor] = {
             "audio": audio,
             "rvq_loss": rvq_loss,
+            "pre_rvq_std": pre_norm_std,
         }
         if mode == "train":
             logits = self.content_head(units)

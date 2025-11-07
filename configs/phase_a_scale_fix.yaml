@@ -1,5 +1,5 @@
 experiment:
-  name: streamvc_mps_clean100
+  name: streamvc_phase_a_scale_fix
   seed: 1234
 
 data:
@@ -45,12 +45,14 @@ model:
       num_quantizers: 8
       codebook_size: 1024
       dims: 40
-      commitment_cost: 0.5  # Phase 1: 0.5 (can AB test with 1.0)
-      progressive_steps: 2000  # Activate 1 quantizer every 2K steps
+      commitment_cost: 0.5
+      progressive_steps: 2000
+      use_cosine_sim: false  # Phase A: Back to L2 distance
+      use_ste_fix: true  # Phase A: STE consistency fix
 
 training:
   batch_size: 8
-  num_steps: 50000
+  num_steps: 5000  # Phase A: Early validation at 5K
   optimizer:
     type: adamw
     lr: 0.0001
@@ -64,12 +66,14 @@ training:
     content_ce_weight: 1.0
     stft_weight: 1.0
     l1_weight: 10.0
-    adversarial_weight: 4.0
-    feature_matching_weight: 2.0
+    adversarial_weight: 0.0  # Phase A: No GAN yet
+    feature_matching_weight: 0.0
+    rms_weight: 0.1  # Phase A: Frame RMS supervision
+    multiband_rms_weight: 0.05  # Phase A: Multi-band RMS
   log_interval: 100
   eval_interval: 1000
-  ckpt_interval: 5000
-  output_dir: runs/streamvc_mps_clean100
+  ckpt_interval: 1000
+  output_dir: runs/streamvc_phase_a_scale_fix
 
 inference:
   chunk_ms: 20.0

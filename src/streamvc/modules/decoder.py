@@ -95,13 +95,15 @@ class StreamVCDecoder(nn.Module):
 
         self.out_proj = nn.Conv1d(config.channels, 1, kernel_size=1)
         self.rvq = ResidualVectorQuantizer(config.rvq)
+        # Pre-RVQ: 1x1 conv for scale adjustment
+        self.pre_rvq_conv = nn.Conv1d(config.channels, config.channels, kernel_size=1)
 
     def forward(
         self,
         content_units: torch.Tensor,
         side_features: torch.Tensor,
         speaker_embedding: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor], torch.Tensor]:
 
         if side_features.shape[:2] != content_units.shape[:2]:
             raise ValueError("side features and content units must align in time")
@@ -116,9 +118,22 @@ class StreamVCDecoder(nn.Module):
         for block in self.residual_blocks:
             x = block(x)
         x = self.post(x)
-        x = x.transpose(1, 2)
-        quantized, rvq_loss, codes = self.rvq(x)
+
+        # Pre-RVQ processing: 1x1 conv + manual normalization
+        x_for_rvq = self.pre_rvq_conv(x)  # (B, C, T)
+
+        # Manual normalization: mean=0, std=1
+        x_for_rvq = x_for_rvq - x_for_rvq.mean(dim=-1, keepdim=True)
+        x_for_rvq = x_for_rvq / (x_for_rvq.std(dim=-1, keepdim=True) + 1e-5)
+
+        # Compute std after normalization for monitoring (should be ~1.0)
+        post_norm_std = x_for_rvq.std()
+
+        # Transpose for RVQ: (B, C, T) -> (B, T, C)
+        x_for_rvq = x_for_rvq.transpose(1, 2)
+
+        quantized, rvq_loss, codes = self.rvq(x_for_rvq)
         audio = self.out_proj(quantized.transpose(1, 2)).squeeze(1)
-        return audio, rvq_loss, codes
+        return audio, rvq_loss, codes, post_norm_std
 
 

@@ -1,5 +1,5 @@
 experiment:
-  name: streamvc_mps_clean100
+  name: streamvc_mps_clean100_balanced
   seed: 1234
 
 data:
@@ -45,8 +45,7 @@ model:
       num_quantizers: 8
       codebook_size: 1024
       dims: 40
-      commitment_cost: 0.5  # Phase 1: 0.5 (can AB test with 1.0)
-      progressive_steps: 2000  # Activate 1 quantizer every 2K steps
+      commitment_cost: 0.25
 
 training:
   batch_size: 8
@@ -61,15 +60,15 @@ training:
     warmup_steps: 2000
     eta_min: 0.000001
   losses:
-    content_ce_weight: 1.0
-    stft_weight: 1.0
-    l1_weight: 10.0
-    adversarial_weight: 4.0
-    feature_matching_weight: 2.0
+    content_ce_weight: 0.5    # 1.0 → 0.5 (半減、CEの支配を抑える)
+    stft_weight: 3.0          # 1.0 → 3.0 (3倍、周波数領域を主損失に)
+    l1_weight: 20.0           # 10.0 → 20.0 (2倍、時間領域を強化)
+    adversarial_weight: 0.0
+    feature_matching_weight: 0.0
   log_interval: 100
   eval_interval: 1000
   ckpt_interval: 5000
-  output_dir: runs/streamvc_mps_clean100
+  output_dir: runs/streamvc_mps_clean100_balanced
 
 inference:
   chunk_ms: 20.0

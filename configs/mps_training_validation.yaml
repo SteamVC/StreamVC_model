@@ -1,5 +1,5 @@
 experiment:
-  name: streamvc_mps_clean100
+  name: streamvc_mps_rvq_validation
   seed: 1234
 
 data:
@@ -45,12 +45,13 @@ model:
       num_quantizers: 8
       codebook_size: 1024
       dims: 40
-      commitment_cost: 0.5  # Phase 1: 0.5 (can AB test with 1.0)
+      commitment_cost: 0.5  # Phase 1: start with 0.5 (can test 1.0 if needed)
       progressive_steps: 2000  # Activate 1 quantizer every 2K steps
+      use_cosine_sim: true  # Phase 2A: Cosine similarity VQ
 
 training:
   batch_size: 8
-  num_steps: 50000
+  num_steps: 10000  # Validation run: early checkpoints at 1K, 2K, 5K, 10K
   optimizer:
     type: adamw
     lr: 0.0001
@@ -68,8 +69,8 @@ training:
     feature_matching_weight: 2.0
   log_interval: 100
   eval_interval: 1000
-  ckpt_interval: 5000
-  output_dir: runs/streamvc_mps_clean100
+  ckpt_interval: 1000  # More frequent checkpoints for validation: every 1K steps
+  output_dir: runs/streamvc_mps_rvq_phase2a
 
 inference:
   chunk_ms: 20.0
