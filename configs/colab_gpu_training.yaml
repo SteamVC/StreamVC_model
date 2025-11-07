@@ -1,0 +1,98 @@
+experiment:
+  name: streamvc_colab_gpu
+  seed: 1234
+
+data:
+  sample_rate: 16000
+  frame_ms: 20.0
+  lookahead_frames: 3
+  cache_dir: data/cache
+  datasets:
+    - name: libri_tts
+      root: data/libritts
+      language: en
+      metadata: data/libritts/metadata.jsonl
+      weight: 1.0
+  sample_length_sec: 1.28
+  reference_length_sec: 1.0
+  hubert_cache: data/cache/hubert
+  yin_cache: data/cache/yin
+
+model:
+  num_hubert_labels: 100
+  content_encoder:
+    channels: 64
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 7
+    stride_schedule: [2, 2, 2]
+    dilation_growth: 2
+    dropout: 0.1
+  speaker_encoder:
+    channels: 32
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 5
+    stride_schedule: [2, 2]
+    dilation_growth: 2
+  decoder:
+    channels: 40
+    latent_dim: 64
+    upsample_factors: [2, 2, 2]
+    kernel_size: 7
+    num_residual_blocks: 3
+    rvq:
+      num_quantizers: 8
+      codebook_size: 1024
+      dims: 40
+      commitment_cost: 0.25
+      progressive_schedule:
+        # Start with 1 quantizer, add 1 every 5k steps
+        - step: 0
+          num_active: 1
+        - step: 5000
+          num_active: 2
+        - step: 10000
+          num_active: 3
+        - step: 15000
+          num_active: 4
+        - step: 20000
+          num_active: 5
+        - step: 25000
+          num_active: 6
+        - step: 30000
+          num_active: 7
+        - step: 35000
+          num_active: 8
+
+training:
+  batch_size: 32  # GPU can handle larger batches (T4: 32, V100: 48-64)
+  num_steps: 100000  # More steps for better convergence
+  optimizer:
+    type: adamw
+    lr: 0.0003  # Higher learning rate for faster training with larger batch
+    betas: [0.8, 0.99]
+    weight_decay: 0.01
+  scheduler:
+    type: cosine
+    warmup_steps: 4000  # Longer warmup for stability
+    eta_min: 0.00001
+  losses:
+    content_ce_weight: 0.5
+    stft_weight: 3.0
+    l1_weight: 20.0
+    adversarial_weight: 0.0
+    feature_matching_weight: 0.0
+  gradient_clip_norm: 1.0
+  log_interval: 50  # More frequent logging
+  eval_interval: 2000
+  ckpt_interval: 5000
+  output_dir: runs/streamvc_colab_gpu
+  use_amp: true  # Automatic Mixed Precision for faster training
+
+inference:
+  chunk_ms: 20.0
+  quantize: false
+  export:
+    tflite: false
+    onnx: false
