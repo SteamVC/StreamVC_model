@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -66,6 +67,9 @@ class StreamVCTrainer:
         # GAN warm-up configuration
         self.gan_warmup_steps = config.training.gan_warmup_steps
         self.gan_rampup_steps = config.training.gan_rampup_steps
+
+        # Google Drive backup configuration
+        self.gdrive_backup_dir: Optional[Path] = None
 
     def _build_optimizer(self, parameters, lr_scale: float = 1.0) -> Optimizer:
         """Build optimizer with optional learning rate scaling.
@@ -422,6 +426,11 @@ class StreamVCTrainer:
                 self.writer.add_scalar(f"train/{key}", value, self.step)
 
     def save_checkpoint(self, path: Path) -> None:
+        """Save checkpoint to local path and optionally backup to Google Drive.
+
+        Args:
+            path: Local checkpoint path
+        """
         state = {
             "model": self.pipeline.state_dict(),
             "optimizer_g": self.optimizer_g.state_dict(),
@@ -436,7 +445,39 @@ class StreamVCTrainer:
             state["optimizer_d"] = self.optimizer_d.state_dict()
         if self.scheduler_d is not None:
             state["scheduler_d"] = self.scheduler_d.state_dict()
+
+        # Save to local path
         torch.save(state, path)
+        print(f"Checkpoint saved: {path}")
+
+        # Backup to Google Drive if configured
+        if self.gdrive_backup_dir is not None:
+            self._backup_to_gdrive(path)
+
+    def _backup_to_gdrive(self, checkpoint_path: Path) -> None:
+        """Backup checkpoint to Google Drive.
+
+        Args:
+            checkpoint_path: Path to checkpoint file to backup
+        """
+        try:
+            gdrive_path = self.gdrive_backup_dir / checkpoint_path.name
+            self.gdrive_backup_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(checkpoint_path, gdrive_path)
+            print(f"Checkpoint backed up to Google Drive: {gdrive_path}")
+        except Exception as e:
+            print(f"Warning: Failed to backup checkpoint to Google Drive: {e}")
+            print("Training will continue without backup.")
+
+    def set_gdrive_backup(self, gdrive_dir: Path) -> None:
+        """Enable automatic backup of checkpoints to Google Drive.
+
+        Args:
+            gdrive_dir: Path to Google Drive directory for backups
+                       (e.g., /content/drive/MyDrive/streamVC/checkpoints)
+        """
+        self.gdrive_backup_dir = gdrive_dir
+        print(f"Google Drive backup enabled: {gdrive_dir}")
 
     def load_checkpoint(self, path: Path) -> None:
         state = torch.load(path, map_location=self.device)

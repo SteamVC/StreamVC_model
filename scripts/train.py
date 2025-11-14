@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     parser.add_argument("--device", type=str, default="cuda", help="cuda, mps, or cpu")
     parser.add_argument("--eval", action="store_true", help="build eval loader")
+    parser.add_argument(
+        "--gdrive-backup",
+        type=Path,
+        default=None,
+        help="Google Drive directory for checkpoint backups (e.g., /content/drive/MyDrive/streamVC/checkpoints)",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +56,10 @@ def main() -> None:
         trainer.pipeline.to(trainer.device)
         if trainer.discriminator is not None:
             trainer.discriminator.to(trainer.device)
+
+    # Enable Google Drive backup if specified
+    if args.gdrive_backup is not None:
+        trainer.set_gdrive_backup(args.gdrive_backup)
 
     trainer.fit(train_loader, eval_loader)
 
