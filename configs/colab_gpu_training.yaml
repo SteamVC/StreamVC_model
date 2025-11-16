@@ -46,24 +46,10 @@ model:
       codebook_size: 1024
       dims: 40
       commitment_cost: 0.25
-      progressive_schedule:
-        # Start with 1 quantizer, add 1 every 5k steps
-        - step: 0
-          num_active: 1
-        - step: 5000
-          num_active: 2
-        - step: 10000
-          num_active: 3
-        - step: 15000
-          num_active: 4
-        - step: 20000
-          num_active: 5
-        - step: 25000
-          num_active: 6
-        - step: 30000
-          num_active: 7
-        - step: 35000
-          num_active: 8
+      progressive_steps: 5000  # Add 1 quantizer every 5k steps
+      use_ema: false
+      use_cosine_sim: false
+      use_ste_fix: true
 
 training:
   batch_size: 32  # GPU can handle larger batches (T4: 32, V100: 48-64)
