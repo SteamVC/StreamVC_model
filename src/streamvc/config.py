@@ -46,6 +46,8 @@ class TrainingConfig:
     scheduler: Dict[str, Any] = None
     gan_warmup_steps: int = 2000
     gan_rampup_steps: int = 2000
+    gradient_clip_norm: float = 1.0
+    use_amp: bool = False
 
 
 @dataclass
