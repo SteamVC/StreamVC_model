@@ -54,13 +54,10 @@ def scan_libritts(
 
     print(f"Found {len(speaker_dirs)} speakers")
 
-    train_entries = []
-    valid_entries = []
-
-    for speaker_dir in tqdm(speaker_dirs, desc="Processing speakers"):
+    # 全話者の音声ファイルを収集
+    speaker_files = {}
+    for speaker_dir in tqdm(speaker_dirs, desc="Collecting speaker files"):
         speaker_id = speaker_dir.name
-
-        # 全音声ファイルを取得
         wav_files = sorted(speaker_dir.rglob("*.wav"))
 
         if not wav_files:
@@ -69,14 +66,31 @@ def scan_libritts(
         if max_utts_per_speaker:
             wav_files = wav_files[:max_utts_per_speaker]
 
+        speaker_files[speaker_id] = wav_files
+
+    if len(speaker_files) < 2:
+        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+        return 0, 0
+
+    train_entries = []
+    valid_entries = []
+
+    all_speaker_ids = list(speaker_files.keys())
+
+    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
+        wav_files = speaker_files[speaker_id]
+
+        # 他の話者IDをリストアップ
+        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
+
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は別の発話を使用（循環）
-            ref_idx = (i + 1) % len(wav_files)
-            ref_file = wav_files[ref_idx]
+            # 参照音声は異なる話者からランダムに選択
+            ref_speaker_id = random.choice(other_speaker_ids)
+            ref_file = random.choice(speaker_files[ref_speaker_id])
 
             # データディレクトリからの相対パスを取得
             source_rel = wav_file.relative_to(data_dir)
@@ -159,13 +173,10 @@ def scan_vctk(
 
     print(f"Found {len(speaker_dirs)} speakers")
 
-    train_entries = []
-    valid_entries = []
-
-    for speaker_dir in tqdm(speaker_dirs, desc="Processing speakers"):
+    # 全話者の音声ファイルを収集
+    speaker_files = {}
+    for speaker_dir in tqdm(speaker_dirs, desc="Collecting speaker files"):
         speaker_id = speaker_dir.name
-
-        # 全音声ファイルを取得
         wav_files = sorted(speaker_dir.glob("*.wav"))
 
         if not wav_files:
@@ -174,14 +185,31 @@ def scan_vctk(
         if max_utts_per_speaker:
             wav_files = wav_files[:max_utts_per_speaker]
 
+        speaker_files[speaker_id] = wav_files
+
+    if len(speaker_files) < 2:
+        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+        return 0, 0
+
+    train_entries = []
+    valid_entries = []
+
+    all_speaker_ids = list(speaker_files.keys())
+
+    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
+        wav_files = speaker_files[speaker_id]
+
+        # 他の話者IDをリストアップ
+        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
+
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は別の発話を使用（循環）
-            ref_idx = (i + 1) % len(wav_files)
-            ref_file = wav_files[ref_idx]
+            # 参照音声は異なる話者からランダムに選択
+            ref_speaker_id = random.choice(other_speaker_ids)
+            ref_file = random.choice(speaker_files[ref_speaker_id])
 
             # wav_dirからの相対パスを取得
             source_rel = wav_file.relative_to(wav_dir)
@@ -251,10 +279,9 @@ def scan_jvs(
 
     print(f"Found {len(speaker_dirs)} speakers")
 
-    train_entries = []
-    valid_entries = []
-
-    for speaker_dir in tqdm(speaker_dirs, desc="Processing speakers"):
+    # 全話者の音声ファイルを収集
+    speaker_files = {}
+    for speaker_dir in tqdm(speaker_dirs, desc="Collecting speaker files"):
         speaker_id = speaker_dir.name
 
         # parallel100を優先的に使用（全話者で共通の発話）
@@ -271,14 +298,31 @@ def scan_jvs(
         if max_utts_per_speaker:
             wav_files = wav_files[:max_utts_per_speaker]
 
+        speaker_files[speaker_id] = wav_files
+
+    if len(speaker_files) < 2:
+        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+        return 0, 0
+
+    train_entries = []
+    valid_entries = []
+
+    all_speaker_ids = list(speaker_files.keys())
+
+    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
+        wav_files = speaker_files[speaker_id]
+
+        # 他の話者IDをリストアップ
+        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
+
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は別の発話を使用（循環）
-            ref_idx = (i + 1) % len(wav_files)
-            ref_file = wav_files[ref_idx]
+            # 参照音声は異なる話者からランダムに選択
+            ref_speaker_id = random.choice(other_speaker_ids)
+            ref_file = random.choice(speaker_files[ref_speaker_id])
 
             # jvs_ver1からの相対パスを取得
             source_rel = wav_file.relative_to(jvs_dir)
