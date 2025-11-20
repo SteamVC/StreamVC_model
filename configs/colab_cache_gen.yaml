@@ -10,8 +10,8 @@ data:
   cache_dir: /content/drive/MyDrive/streamVC/data/cache
   datasets:
     - name: libri_tts
-      # Google Drive の生データパス
-      root: /content/drive/MyDrive/streamVC/data/libritts/LibriTTS
+      # Google Drive の生データパス（train-clean-100 を含むディレクトリ）
+      root: /content/drive/MyDrive/streamVC/data/libritts/LibriTTS/train-clean-100
       language: en
       # metadata も Google Drive から読む
       metadata: /content/drive/MyDrive/streamVC/data/libritts/metadata.jsonl
