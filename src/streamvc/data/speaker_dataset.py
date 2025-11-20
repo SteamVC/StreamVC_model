@@ -22,7 +22,7 @@ class SpeakerDataset(Dataset):
         cache_dir: Path,
         dataset_name: str = "libri_tts",
         sample_rate: int = 16000,
-        sample_length_sec: float = 3.0,  # Longer than VC (1.28s) for better speaker ID
+        sample_length_sec: float = 1.28,  # Same as VC cache (no repeat needed)
         split: str = "train",
         speaker_to_id: dict = None,  # Shared speaker mapping across splits
     ) -> None:
@@ -73,20 +73,15 @@ class SpeakerDataset(Dataset):
         sample = torch.load(cache_file)
         wav = sample["source_audio"]  # (T,) at 16kHz, 1.28 sec = 20480 samples
 
-        # Need 3.0 sec = 48000 samples
-        # Strategy: repeat and crop
-        target_length = self.sample_length
-
-        if wav.numel() >= target_length:
+        # Use cached audio as-is (no repeat, just pad if needed)
+        if wav.numel() > self.sample_length:
             # Random crop
-            start = torch.randint(0, wav.numel() - target_length + 1, (1,)).item()
-            wav = wav[start : start + target_length]
-        else:
-            # Repeat until we have enough, then crop
-            num_repeats = (target_length // wav.numel()) + 1
-            wav = wav.repeat(num_repeats)
-            start = torch.randint(0, wav.numel() - target_length + 1, (1,)).item()
-            wav = wav[start : start + target_length]
+            start = torch.randint(0, wav.numel() - self.sample_length + 1, (1,)).item()
+            wav = wav[start : start + self.sample_length]
+        elif wav.numel() < self.sample_length:
+            # Pad with zeros
+            pad = self.sample_length - wav.numel()
+            wav = F.pad(wav, (0, pad))
 
         # Get speaker label
         speaker_str = self.file_to_speaker[cache_file]
