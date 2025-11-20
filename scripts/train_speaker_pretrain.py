@@ -106,16 +106,35 @@ def main():
     # TensorBoard
     writer = SummaryWriter(str(args.output_dir / "logs"))
 
-    # Load dataset
+    # Build global speaker mapping from both train and valid
+    print("Building global speaker mapping...")
+    all_speakers = set()
+
+    for split in ["train", "valid"]:
+        cache_path = args.cache_dir / args.dataset_name / split
+        if cache_path.exists():
+            for cache_file in cache_path.glob("*.pt"):
+                speaker_id = cache_file.stem.split("_")[0]
+                all_speakers.add(speaker_id)
+
+    speaker_to_id = {}
+    for spk_id, spk_str in enumerate(sorted(all_speakers)):
+        speaker_to_id[spk_str] = spk_id
+
+    print(f"Total speakers: {len(speaker_to_id)}")
+
+    # Load datasets with shared speaker mapping
     train_dataset = SpeakerDataset(
         cache_dir=args.cache_dir,
         dataset_name=args.dataset_name,
         split="train",
+        speaker_to_id=speaker_to_id,
     )
     valid_dataset = SpeakerDataset(
         cache_dir=args.cache_dir,
         dataset_name=args.dataset_name,
         split="valid",
+        speaker_to_id=speaker_to_id,
     )
 
     train_loader = DataLoader(
@@ -135,9 +154,9 @@ def main():
         pin_memory=True,
     )
 
-    # Model
+    # Model (use total number of speakers from mapping)
     model = SpeakerClassifier(
-        num_speakers=train_dataset.num_speakers,
+        num_speakers=len(speaker_to_id),
         latent_dim=args.latent_dim,
     ).to(args.device)
 
@@ -148,7 +167,7 @@ def main():
     print(f"\n{'='*70}")
     print(f"Phase 1: Speaker Encoder Pretrain")
     print(f"{'='*70}")
-    print(f"Speakers: {train_dataset.num_speakers}")
+    print(f"Total speakers: {len(speaker_to_id)}")
     print(f"Train samples: {len(train_dataset)}")
     print(f"Valid samples: {len(valid_dataset)}")
     print(f"Latent dim: {args.latent_dim}")
@@ -185,7 +204,7 @@ def main():
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "val_acc": val_acc,
-                "num_speakers": train_dataset.num_speakers,
+                "num_speakers": len(speaker_to_id),
                 "latent_dim": args.latent_dim,
             }, ckpt_path)
             print(f"  ✓ Best model saved (val_acc={100*val_acc:.2f}%)")
@@ -199,7 +218,7 @@ def main():
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "val_acc": val_acc,
-                "num_speakers": train_dataset.num_speakers,
+                "num_speakers": len(speaker_to_id),
                 "latent_dim": args.latent_dim,
             }, ckpt_path)
 

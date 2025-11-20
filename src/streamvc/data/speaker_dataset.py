@@ -24,6 +24,7 @@ class SpeakerDataset(Dataset):
         sample_rate: int = 16000,
         sample_length_sec: float = 3.0,  # Longer than VC (1.28s) for better speaker ID
         split: str = "train",
+        speaker_to_id: dict = None,  # Shared speaker mapping across splits
     ) -> None:
         self.cache_dir = Path(cache_dir)
         self.dataset_name = dataset_name
@@ -42,23 +43,25 @@ class SpeakerDataset(Dataset):
 
         # Extract speaker IDs from filenames
         # Format: {speaker_id}_{speaker_id}_{book_id}_{...}.pt
-        speaker_set = set()
         self.file_to_speaker = {}
-
         for cache_file in self.cache_files:
             # Extract speaker_id from filename (first part before first underscore)
             speaker_id = cache_file.stem.split("_")[0]
             self.file_to_speaker[cache_file] = speaker_id
-            speaker_set.add(speaker_id)
 
-        # Create speaker ID mapping
-        self.speaker_to_id = {}
-        for spk_id, spk_str in enumerate(sorted(speaker_set)):
-            self.speaker_to_id[spk_str] = spk_id
+        # Use provided speaker mapping or create new one
+        if speaker_to_id is not None:
+            self.speaker_to_id = speaker_to_id
+        else:
+            # Create mapping from all speakers in this split
+            speaker_set = set(self.file_to_speaker.values())
+            self.speaker_to_id = {}
+            for spk_id, spk_str in enumerate(sorted(speaker_set)):
+                self.speaker_to_id[spk_str] = spk_id
 
         self.num_speakers = len(self.speaker_to_id)
 
-        print(f"SpeakerDataset ({split}): {len(self.cache_files)} samples, {self.num_speakers} speakers")
+        print(f"SpeakerDataset ({split}): {len(self.cache_files)} samples, {len(set(self.file_to_speaker.values()))} unique speakers (total {self.num_speakers} in mapping)")
 
     def __len__(self) -> int:
         return len(self.cache_files)
