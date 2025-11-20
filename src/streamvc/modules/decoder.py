@@ -17,21 +17,41 @@ def _causal_conv(x: torch.Tensor, conv: nn.Conv1d) -> torch.Tensor:
     return conv(x)
 
 
+class FiLM(nn.Module):
+    """Feature-wise Linear Modulation for speaker conditioning."""
+
+    def __init__(self, channels: int, speaker_dim: int) -> None:
+        super().__init__()
+        self.scale = nn.Linear(speaker_dim, channels)
+        self.bias = nn.Linear(speaker_dim, channels)
+
+    def forward(self, x: torch.Tensor, speaker: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, T), speaker: (B, D)
+        scale = self.scale(speaker).unsqueeze(-1)  # (B, C, 1)
+        bias = self.bias(speaker).unsqueeze(-1)  # (B, C, 1)
+        return x * scale + bias
+
+
 class ResidualBlock(nn.Module):
-    def __init__(self, channels: int, kernel_size: int, dilation: int) -> None:
+    def __init__(self, channels: int, kernel_size: int, dilation: int, speaker_dim: int = None) -> None:
         super().__init__()
         self.conv = nn.Conv1d(channels, channels, kernel_size, dilation=dilation)
         self.norm = nn.LayerNorm(channels)
         self.act = nn.SiLU()
         self.proj = nn.Conv1d(channels, channels, 1)
+        # FiLM for speaker conditioning
+        self.film = FiLM(channels, speaker_dim) if speaker_dim is not None else None
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, speaker: torch.Tensor = None) -> torch.Tensor:
         residual = x
         out = _causal_conv(x, self.conv)
         out = out.transpose(1, 2)
         out = self.norm(out)
         out = self.act(out).transpose(1, 2)
         out = self.proj(out)
+        # Apply FiLM conditioning
+        if self.film is not None and speaker is not None:
+            out = self.film(out, speaker)
         return residual + out
 
 
@@ -74,9 +94,9 @@ class StreamVCDecoder(nn.Module):
     ) -> None:
         super().__init__()
         self.config = config
+        self.speaker_dim = speaker_dim
         input_dim = config.latent_dim + side_dim
         self.input_proj = nn.Linear(input_dim, config.channels)
-        self.speaker_proj = nn.Linear(speaker_dim, config.channels)
 
         self.upsample_blocks = nn.ModuleList(
             [UpsampleBlock(config.channels, factor, config.kernel_size) for factor in config.upsample_factors]
@@ -85,7 +105,8 @@ class StreamVCDecoder(nn.Module):
         residual_blocks: List[nn.Module] = []
         for i in range(config.num_residual_blocks):
             dilation = 2 ** i
-            residual_blocks.append(ResidualBlock(config.channels, config.kernel_size, dilation))
+            # Pass speaker_dim to enable FiLM conditioning in each residual block
+            residual_blocks.append(ResidualBlock(config.channels, config.kernel_size, dilation, speaker_dim))
         self.residual_blocks = nn.ModuleList(residual_blocks)
         self.post = nn.Sequential(
             nn.Conv1d(config.channels, config.channels, kernel_size=3, padding=1),
@@ -110,13 +131,12 @@ class StreamVCDecoder(nn.Module):
 
         x = torch.cat([content_units, side_features], dim=-1)
         x = self.input_proj(x)
-        speaker = self.speaker_proj(speaker_embedding).unsqueeze(1)
-        x = x + speaker
         x = x.transpose(1, 2)
         for up in self.upsample_blocks:
             x = up(x)
+        # Apply FiLM conditioning in each residual block
         for block in self.residual_blocks:
-            x = block(x)
+            x = block(x, speaker_embedding)
         x = self.post(x)
 
         # Pre-RVQ processing: 1x1 conv + manual normalization

@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 src/streamvc/__init__.py
 src/streamvc/config.py
@@ -15,6 +16,7 @@ src/streamvc/data/preprocess.py
 src/streamvc/modules/__init__.py
 src/streamvc/modules/content_encoder.py
 src/streamvc/modules/decoder.py
+src/streamvc/modules/discriminator.py
 src/streamvc/modules/pitch_energy.py
 src/streamvc/modules/rvq.py
 src/streamvc/modules/speaker_encoder.py

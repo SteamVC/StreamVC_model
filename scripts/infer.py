@@ -29,7 +29,11 @@ def load_checkpoint(checkpoint_path: Path, config, device):
             print(f"  デフォルト: num_hubert_labels={num_hubert_labels}")
 
     pipeline = StreamVCPipeline(config, num_hubert_labels=num_hubert_labels)
-    pipeline.load_state_dict(checkpoint["model"])
+    missing, unexpected = pipeline.load_state_dict(checkpoint["model"], strict=False)
+    if missing:
+        print(f"  警告: 不足しているキー: {missing}")
+    if unexpected:
+        print(f"  警告: 予期しないキー: {unexpected}")
 
     # Restore active quantizers for progressive RVQ
     if "num_active_quantizers" in checkpoint:

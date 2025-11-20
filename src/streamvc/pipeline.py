@@ -71,7 +71,11 @@ class StreamVCPipeline(nn.Module):
         pitch = self.pitch_extractor(source_audio, mode="train" if mode == "train" else "infer")
 
         side = self._build_side_features(pitch, units.shape[1])
-        audio, rvq_loss, codes, pre_norm_std = self.decoder(units, side, speaker_embedding)
+
+        # Stop gradient from Decoder loss to Content Encoder
+        # Content Encoder should only be trained by HuBERT CE loss
+        units_for_decoder = units.detach() if mode == "train" else units
+        audio, rvq_loss, codes, pre_norm_std = self.decoder(units_for_decoder, side, speaker_embedding)
 
         outputs: Dict[str, torch.Tensor] = {
             "audio": audio,
@@ -109,7 +113,7 @@ class StreamVCPipeline(nn.Module):
         ).squeeze(1)  # (B, target_length)
 
         energy_interp = F.interpolate(
-            pitch_output.energy.unsqueeze(1),
+            pitch_output.energy_whiten.unsqueeze(1),
             size=target_length,
             mode="linear",
             align_corners=False

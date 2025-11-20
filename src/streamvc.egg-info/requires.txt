@@ -8,7 +8,6 @@ tqdm
 pandas
 huggingface_hub
 datasets
-fairseq
 librosa
 omegaconf
 

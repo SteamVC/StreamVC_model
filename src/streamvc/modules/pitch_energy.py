@@ -16,6 +16,7 @@ class PitchEnergyOutput:
     f0_whiten: torch.Tensor
     voiced_prob: torch.Tensor
     energy: torch.Tensor
+    energy_whiten: torch.Tensor
 
 
 class PitchEnergyExtractor(nn.Module):
@@ -34,15 +35,23 @@ class PitchEnergyExtractor(nn.Module):
         hop_ms = frame_ms if hop_ms is None else hop_ms
         self.hop_length = int(sample_rate * hop_ms / 1000)
         self.ema_decay = ema_decay
+        # F0用の running stats
         self.register_buffer("running_mean", torch.zeros(1))
         self.register_buffer("running_var", torch.ones(1))
         self.register_buffer("num_updates", torch.zeros(1))
+        # Energy用の running stats
+        self.register_buffer("energy_running_mean", torch.zeros(1))
+        self.register_buffer("energy_running_var", torch.ones(1))
+        self.register_buffer("energy_num_updates", torch.zeros(1))
 
     @torch.no_grad()
     def reset_stats(self) -> None:
         self.running_mean.zero_()
         self.running_var.fill_(1.0)
         self.num_updates.zero_()
+        self.energy_running_mean.zero_()
+        self.energy_running_var.fill_(1.0)
+        self.energy_num_updates.zero_()
 
     def forward(self, audio: torch.Tensor, mode: str = "train") -> PitchEnergyOutput:
         """audio: (B, T)"""
@@ -112,5 +121,36 @@ class PitchEnergyExtractor(nn.Module):
                 self.running_mean.mul_(self.ema_decay).add_(obs_mean.unsqueeze(0) * (1 - self.ema_decay))
                 self.running_var.mul_(self.ema_decay).add_(obs_var.unsqueeze(0) * (1 - self.ema_decay))
 
-        return PitchEnergyOutput(f0_hz=f0, f0_whiten=whiten, voiced_prob=voiced_prob, energy=energy)
+        # Energy whitening (per-utterance mean/var normalization)
+        if mode == "train":
+            energy_mean = energy.mean()
+            energy_std = energy.std()
+            energy_std = torch.where(energy_std == 0, torch.tensor(1.0, device=energy.device), energy_std)
+            energy_whiten = (energy - energy_mean) / energy_std
+            # EMA更新
+            if self.energy_num_updates.item() == 0:
+                self.energy_running_mean.copy_(energy_mean.unsqueeze(0))
+                self.energy_running_var.copy_(energy_std.pow(2).unsqueeze(0))
+                self.energy_num_updates.fill_(1.0)
+            else:
+                self.energy_running_mean.mul_(self.ema_decay).add_(energy_mean.unsqueeze(0) * (1 - self.ema_decay))
+                self.energy_running_var.mul_(self.ema_decay).add_(energy_std.pow(2).unsqueeze(0) * (1 - self.ema_decay))
+        else:
+            if self.energy_num_updates.item() == 0:
+                energy_mean = energy.mean()
+                energy_var = energy.var()
+                self.energy_running_mean.copy_(energy_mean.unsqueeze(0))
+                self.energy_running_var.copy_(energy_var.unsqueeze(0))
+                self.energy_num_updates.fill_(1.0)
+            energy_mean = self.energy_running_mean.squeeze(0)
+            energy_std = torch.sqrt(self.energy_running_var.squeeze(0))
+            energy_std = torch.where(energy_std == 0, torch.tensor(1.0, device=energy.device), energy_std)
+            energy_whiten = (energy - energy_mean) / energy_std
+            # EMA更新
+            obs_mean = energy.mean()
+            obs_var = energy.var()
+            self.energy_running_mean.mul_(self.ema_decay).add_(obs_mean.unsqueeze(0) * (1 - self.ema_decay))
+            self.energy_running_var.mul_(self.ema_decay).add_(obs_var.unsqueeze(0) * (1 - self.ema_decay))
+
+        return PitchEnergyOutput(f0_hz=f0, f0_whiten=whiten, voiced_prob=voiced_prob, energy=energy, energy_whiten=energy_whiten)
 

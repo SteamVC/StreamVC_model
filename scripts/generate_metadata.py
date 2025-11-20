@@ -68,29 +68,25 @@ def scan_libritts(
 
         speaker_files[speaker_id] = wav_files
 
-    if len(speaker_files) < 2:
-        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+    if len(speaker_files) == 0:
+        print(f"⚠ Warning: No speakers found.")
         return 0, 0
 
     train_entries = []
     valid_entries = []
 
-    all_speaker_ids = list(speaker_files.keys())
-
-    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
-        wav_files = speaker_files[speaker_id]
-
-        # 他の話者IDをリストアップ
-        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
-
+    for speaker_id, wav_files in tqdm(speaker_files.items(), desc="Processing speakers"):
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は異なる話者からランダムに選択
-            ref_speaker_id = random.choice(other_speaker_ids)
-            ref_file = random.choice(speaker_files[ref_speaker_id])
+            # 参照音声は同一話者の別発話を使用（StreamVC論文の自己再構成学習）
+            if len(wav_files) > 1:
+                ref_idx = (i + 1) % len(wav_files)
+                ref_file = wav_files[ref_idx]
+            else:
+                ref_file = wav_file  # 1発話しかない場合は同じファイル
 
             # データディレクトリからの相対パスを取得
             source_rel = wav_file.relative_to(data_dir)
@@ -187,29 +183,25 @@ def scan_vctk(
 
         speaker_files[speaker_id] = wav_files
 
-    if len(speaker_files) < 2:
-        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+    if len(speaker_files) == 0:
+        print(f"⚠ Warning: No speakers found.")
         return 0, 0
 
     train_entries = []
     valid_entries = []
 
-    all_speaker_ids = list(speaker_files.keys())
-
-    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
-        wav_files = speaker_files[speaker_id]
-
-        # 他の話者IDをリストアップ
-        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
-
+    for speaker_id, wav_files in tqdm(speaker_files.items(), desc="Processing speakers"):
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は異なる話者からランダムに選択
-            ref_speaker_id = random.choice(other_speaker_ids)
-            ref_file = random.choice(speaker_files[ref_speaker_id])
+            # 参照音声は同一話者の別発話を使用（StreamVC論文の自己再構成学習）
+            if len(wav_files) > 1:
+                ref_idx = (i + 1) % len(wav_files)
+                ref_file = wav_files[ref_idx]
+            else:
+                ref_file = wav_file
 
             # wav_dirからの相対パスを取得
             source_rel = wav_file.relative_to(wav_dir)
@@ -300,29 +292,25 @@ def scan_jvs(
 
         speaker_files[speaker_id] = wav_files
 
-    if len(speaker_files) < 2:
-        print(f"⚠ Warning: Only {len(speaker_files)} speaker(s) found. Need at least 2 for cross-speaker reference.")
+    if len(speaker_files) == 0:
+        print(f"⚠ Warning: No speakers found.")
         return 0, 0
 
     train_entries = []
     valid_entries = []
 
-    all_speaker_ids = list(speaker_files.keys())
-
-    for speaker_id in tqdm(all_speaker_ids, desc="Processing speakers"):
-        wav_files = speaker_files[speaker_id]
-
-        # 他の話者IDをリストアップ
-        other_speaker_ids = [sid for sid in all_speaker_ids if sid != speaker_id]
-
+    for speaker_id, wav_files in tqdm(speaker_files.items(), desc="Processing speakers"):
         # 検証セット用にランダムサンプリング
         num_valid = max(1, int(len(wav_files) * valid_ratio))
         valid_indices = set(random.sample(range(len(wav_files)), num_valid))
 
         for i, wav_file in enumerate(wav_files):
-            # 参照音声は異なる話者からランダムに選択
-            ref_speaker_id = random.choice(other_speaker_ids)
-            ref_file = random.choice(speaker_files[ref_speaker_id])
+            # 参照音声は同一話者の別発話を使用（StreamVC論文の自己再構成学習）
+            if len(wav_files) > 1:
+                ref_idx = (i + 1) % len(wav_files)
+                ref_file = wav_files[ref_idx]
+            else:
+                ref_file = wav_file
 
             # jvs_ver1からの相対パスを取得
             source_rel = wav_file.relative_to(jvs_dir)
