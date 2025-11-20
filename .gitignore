@@ -15,3 +15,5 @@ runs/*
 *.wav
 *.mp3
 *.m4a
+
+data/cache.tar

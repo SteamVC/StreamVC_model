@@ -1,0 +1,52 @@
+experiment:
+  name: streamvc_local_cache_gen
+  seed: 1234
+
+data:
+  sample_rate: 16000
+  frame_ms: 20.0
+  lookahead_frames: 3
+  cache_dir: data/cache
+  datasets:
+    - name: libri_tts
+      root: data/libritts/LibriTTS/train-clean-100
+      language: en
+      metadata: data/libritts/metadata.jsonl
+      weight: 1.0
+  sample_length_sec: 1.28
+  reference_length_sec: 1.0
+  hubert_cache: data/cache/hubert
+  yin_cache: data/cache/yin
+
+model:
+  num_hubert_labels: 100
+  content_encoder:
+    channels: 64
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 7
+    stride_schedule: [2, 2, 2]
+    dilation_growth: 2
+    dropout: 0.1
+  speaker_encoder:
+    channels: 32
+    latent_dim: 64
+    num_layers: 6
+    kernel_size: 5
+    stride_schedule: [2, 2]
+    dilation_growth: 2
+  decoder:
+    channels: 40
+    latent_dim: 64
+    upsample_factors: [2, 2, 2]
+    kernel_size: 7
+    num_residual_blocks: 3
+    rvq:
+      num_quantizers: 8
+      codebook_size: 1024
+      dims: 40
+      commitment_cost: 0.25
+      progressive_steps: 5000
+      use_ema: false
+      use_cosine_sim: false
+      use_ste_fix: true
