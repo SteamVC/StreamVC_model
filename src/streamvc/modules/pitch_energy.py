@@ -79,78 +79,55 @@ class PitchEnergyExtractor(nn.Module):
             energies.append(energy)
         energy = torch.nn.utils.rnn.pad_sequence(energies, batch_first=True)
 
-        if mode == "train":
-            valid_mask = f0 > 0
-            mean_value = torch.mean(f0[valid_mask]) if torch.any(valid_mask) else torch.tensor(0.0, device=f0.device)
-            std_value = torch.std(f0[valid_mask]) if torch.sum(valid_mask) > 1 else torch.tensor(1.0, device=f0.device)
-            mean = mean_value
-            std = std_value
-        else:
-            if self.num_updates.item() == 0:
-                valid_mask = f0 > 0
-                init_mean = torch.mean(f0[valid_mask]) if torch.any(valid_mask) else torch.tensor(0.0, device=f0.device)
-                init_var = torch.var(f0[valid_mask]) if torch.sum(valid_mask) > 1 else torch.tensor(1.0, device=f0.device)
-                self.running_mean.copy_(init_mean.unsqueeze(0))
-                self.running_var.copy_(init_var.unsqueeze(0))
-                self.num_updates.fill_(1.0)
-            mean = self.running_mean.squeeze(0)
-            std = torch.sqrt(self.running_var.squeeze(0))
-
-        if mode == "train":
-            std = torch.where(std == 0, torch.tensor(1.0, device=f0.device), std)
-            whiten = (f0 - mean) / std
-            # EMA更新
-            valid = torch.any(f0 > 0)
-            if valid:
-                batch_mean = mean
-                batch_var = std.pow(2)
-                if self.num_updates.item() == 0:
-                    self.running_mean.copy_(batch_mean.unsqueeze(0))
-                    self.running_var.copy_(batch_var.unsqueeze(0))
-                    self.num_updates.fill_(1.0)
-                else:
-                    self.running_mean.mul_(self.ema_decay).add_(batch_mean.unsqueeze(0) * (1 - self.ema_decay))
-                    self.running_var.mul_(self.ema_decay).add_(batch_var.unsqueeze(0) * (1 - self.ema_decay))
-        else:
-            std = torch.where(std == 0, torch.tensor(1.0, device=f0.device), std)
-            whiten = (f0 - mean) / std
-            valid_mask = f0 > 0
+        # Per-utterance whitening: normalize each sample independently
+        # This removes speaker-dependent F0 range information
+        whiten = torch.zeros_like(f0)
+        for i in range(f0.shape[0]):
+            valid_mask = f0[i] > 0
             if torch.any(valid_mask):
-                obs_mean = torch.mean(f0[valid_mask])
-                obs_var = torch.var(f0[valid_mask]) if torch.sum(valid_mask) > 1 else self.running_var.squeeze(0)
-                self.running_mean.mul_(self.ema_decay).add_(obs_mean.unsqueeze(0) * (1 - self.ema_decay))
-                self.running_var.mul_(self.ema_decay).add_(obs_var.unsqueeze(0) * (1 - self.ema_decay))
+                # Compute mean/std only from voiced frames
+                f0_voiced = f0[i][valid_mask]
+                mean_i = f0_voiced.mean()
+                std_i = f0_voiced.std() if f0_voiced.numel() > 1 else torch.tensor(1.0, device=f0.device)
+                std_i = torch.where(std_i == 0, torch.tensor(1.0, device=f0.device), std_i)
 
-        # Energy whitening (per-utterance mean/var normalization)
-        if mode == "train":
-            energy_mean = energy.mean()
-            energy_std = energy.std()
-            energy_std = torch.where(energy_std == 0, torch.tensor(1.0, device=energy.device), energy_std)
-            energy_whiten = (energy - energy_mean) / energy_std
-            # EMA更新
-            if self.energy_num_updates.item() == 0:
-                self.energy_running_mean.copy_(energy_mean.unsqueeze(0))
-                self.energy_running_var.copy_(energy_std.pow(2).unsqueeze(0))
-                self.energy_num_updates.fill_(1.0)
+                # Normalize this utterance
+                whiten[i] = (f0[i] - mean_i) / std_i
+
+                # Update running statistics (for inference mode reference, though not used in train mode)
+                if mode == "train":
+                    if self.num_updates.item() == 0:
+                        self.running_mean.copy_(mean_i.unsqueeze(0))
+                        self.running_var.copy_(std_i.pow(2).unsqueeze(0))
+                        self.num_updates.fill_(1.0)
+                    else:
+                        self.running_mean.mul_(self.ema_decay).add_(mean_i.unsqueeze(0) * (1 - self.ema_decay))
+                        self.running_var.mul_(self.ema_decay).add_(std_i.pow(2).unsqueeze(0) * (1 - self.ema_decay))
             else:
-                self.energy_running_mean.mul_(self.ema_decay).add_(energy_mean.unsqueeze(0) * (1 - self.ema_decay))
-                self.energy_running_var.mul_(self.ema_decay).add_(energy_std.pow(2).unsqueeze(0) * (1 - self.ema_decay))
-        else:
-            if self.energy_num_updates.item() == 0:
-                energy_mean = energy.mean()
-                energy_var = energy.var()
-                self.energy_running_mean.copy_(energy_mean.unsqueeze(0))
-                self.energy_running_var.copy_(energy_var.unsqueeze(0))
-                self.energy_num_updates.fill_(1.0)
-            energy_mean = self.energy_running_mean.squeeze(0)
-            energy_std = torch.sqrt(self.energy_running_var.squeeze(0))
-            energy_std = torch.where(energy_std == 0, torch.tensor(1.0, device=energy.device), energy_std)
-            energy_whiten = (energy - energy_mean) / energy_std
-            # EMA更新
-            obs_mean = energy.mean()
-            obs_var = energy.var()
-            self.energy_running_mean.mul_(self.ema_decay).add_(obs_mean.unsqueeze(0) * (1 - self.ema_decay))
-            self.energy_running_var.mul_(self.ema_decay).add_(obs_var.unsqueeze(0) * (1 - self.ema_decay))
+                # No voiced frames - leave as zeros
+                whiten[i] = f0[i]
+
+        # Energy whitening: per-utterance normalization
+        # This removes speaker-dependent loudness information
+        energy_whiten = torch.zeros_like(energy)
+        for i in range(energy.shape[0]):
+            energy_i = energy[i]
+            mean_i = energy_i.mean()
+            std_i = energy_i.std()
+            std_i = torch.where(std_i == 0, torch.tensor(1.0, device=energy.device), std_i)
+
+            # Normalize this utterance
+            energy_whiten[i] = (energy_i - mean_i) / std_i
+
+            # Update running statistics (for inference mode reference)
+            if mode == "train":
+                if self.energy_num_updates.item() == 0:
+                    self.energy_running_mean.copy_(mean_i.unsqueeze(0))
+                    self.energy_running_var.copy_(std_i.pow(2).unsqueeze(0))
+                    self.energy_num_updates.fill_(1.0)
+                else:
+                    self.energy_running_mean.mul_(self.ema_decay).add_(mean_i.unsqueeze(0) * (1 - self.ema_decay))
+                    self.energy_running_var.mul_(self.ema_decay).add_(std_i.pow(2).unsqueeze(0) * (1 - self.ema_decay))
 
         return PitchEnergyOutput(f0_hz=f0, f0_whiten=whiten, voiced_prob=voiced_prob, energy=energy, energy_whiten=energy_whiten)
 
