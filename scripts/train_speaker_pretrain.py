@@ -86,8 +86,8 @@ def validate(model, loader, device):
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 1: Speaker Encoder Pretrain")
-    parser.add_argument("--metadata", type=Path, required=True, help="Path to metadata.jsonl")
-    parser.add_argument("--data-root", type=Path, required=True, help="Path to audio data root")
+    parser.add_argument("--cache-dir", type=Path, required=True, help="Path to cache directory")
+    parser.add_argument("--dataset-name", type=str, default="libri_tts", help="Dataset name in cache")
     parser.add_argument("--output-dir", type=Path, default=Path("runs/speaker_pretrain"), help="Output directory")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--num-epochs", type=int, default=50, help="Number of epochs")
@@ -108,13 +108,13 @@ def main():
 
     # Load dataset
     train_dataset = SpeakerDataset(
-        metadata_path=args.metadata,
-        data_root=args.data_root,
+        cache_dir=args.cache_dir,
+        dataset_name=args.dataset_name,
         split="train",
     )
     valid_dataset = SpeakerDataset(
-        metadata_path=args.metadata,
-        data_root=args.data_root,
+        cache_dir=args.cache_dir,
+        dataset_name=args.dataset_name,
         split="valid",
     )
 

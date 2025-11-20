@@ -10,6 +10,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from streamvc.speaker_classifier import SpeakerClassifier
+from streamvc.data.speaker_dataset import SpeakerDataset
 
 def test_speaker_classifier():
     print("Testing SpeakerClassifier...")
@@ -46,7 +47,41 @@ def test_speaker_classifier():
     num_params = sum(p.numel() for p in model.parameters())
     print(f"  Total parameters: {num_params:,}")
 
-    print("\n✅ All tests passed!\n")
+    print("\n✅ SpeakerClassifier tests passed!\n")
+
+def test_speaker_dataset():
+    print("Testing SpeakerDataset (cache-based)...")
+
+    cache_dir = Path("data/cache")
+    if not cache_dir.exists():
+        print("  ⚠️  Cache not found, skipping dataset test")
+        return
+
+    try:
+        dataset = SpeakerDataset(
+            cache_dir=cache_dir,
+            dataset_name="libri_tts",
+            split="train",
+        )
+
+        print(f"  Dataset size: {len(dataset)}")
+        print(f"  Num speakers: {dataset.num_speakers}")
+
+        # Test single sample
+        sample = dataset[0]
+        print(f"  Audio shape: {sample['audio'].shape}")
+        print(f"  Speaker label: {sample['speaker_label']}")
+
+        assert sample['audio'].shape[0] == 16000 * 3, "Expected 3 sec audio"
+        assert 0 <= sample['speaker_label'] < dataset.num_speakers
+
+        print("  ✓ SpeakerDataset OK")
+
+    except FileNotFoundError as e:
+        print(f"  ⚠️  {e}")
+        print("  Cache not ready yet, skipping dataset test")
 
 if __name__ == "__main__":
     test_speaker_classifier()
+    test_speaker_dataset()
+    print("\n✅ All tests passed!\n")
