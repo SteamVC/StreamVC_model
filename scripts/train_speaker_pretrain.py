@@ -92,7 +92,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--num-epochs", type=int, default=50, help="Number of epochs")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
-    parser.add_argument("--latent-dim", type=int, default=128, help="Speaker embedding dimension")
+    parser.add_argument("--latent-dim", type=int, default=64, help="Speaker embedding dimension (must match VC config)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--num-workers", type=int, default=4, help="DataLoader workers")
 

@@ -72,7 +72,7 @@ def test_speaker_dataset():
         print(f"  Audio shape: {sample['audio'].shape}")
         print(f"  Speaker label: {sample['speaker_label']}")
 
-        assert sample['audio'].shape[0] == 16000 * 3, "Expected 3 sec audio"
+        assert sample['audio'].shape[0] == 16000 * 1.28 or sample['audio'].shape[0] == 20480, "Expected 1.28 sec audio"
         assert 0 <= sample['speaker_label'] < dataset.num_speakers
 
         print("  ✓ SpeakerDataset OK")

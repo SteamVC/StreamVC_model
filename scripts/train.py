@@ -25,6 +25,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Google Drive directory for checkpoint backups (e.g., /content/drive/MyDrive/streamVC/checkpoints)",
     )
+    parser.add_argument(
+        "--speaker-pretrain",
+        type=Path,
+        default=None,
+        help="Path to pretrained speaker encoder checkpoint (Phase 1)",
+    )
+    parser.add_argument(
+        "--freeze-speaker",
+        action="store_true",
+        help="Freeze speaker encoder weights (recommended for Phase 2-A)",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +67,40 @@ def main() -> None:
         trainer.pipeline.to(trainer.device)
         if trainer.discriminator is not None:
             trainer.discriminator.to(trainer.device)
+
+    # Load pretrained speaker encoder if specified (Phase 2)
+    if args.speaker_pretrain is not None:
+        print(f"\n{'='*70}")
+        print(f"Loading pretrained speaker encoder from:")
+        print(f"  {args.speaker_pretrain}")
+
+        ckpt = torch.load(args.speaker_pretrain, map_location="cpu")
+
+        # Extract encoder weights from SpeakerClassifier checkpoint
+        encoder_state = {}
+        for key, value in ckpt["model"].items():
+            if key.startswith("encoder."):
+                # Remove "encoder." prefix
+                new_key = key.replace("encoder.", "")
+                encoder_state[new_key] = value
+
+        # Load into pipeline's speaker encoder
+        trainer.pipeline.speaker_encoder.load_state_dict(encoder_state)
+
+        print(f"✓ Loaded speaker encoder")
+        print(f"  Pretrained on: {ckpt['num_speakers']} speakers")
+        print(f"  Val accuracy: {ckpt['val_acc']:.2%}")
+        print(f"  Latent dim: {ckpt['latent_dim']}")
+
+        # Freeze if requested
+        if args.freeze_speaker:
+            for param in trainer.pipeline.speaker_encoder.parameters():
+                param.requires_grad = False
+            print(f"✓ Speaker encoder FROZEN (Phase 2-A mode)")
+        else:
+            print(f"⚠️  Speaker encoder will be fine-tuned (Phase 2-B/C mode)")
+
+        print(f"{'='*70}\n")
 
     # Enable Google Drive backup if specified
     if args.gdrive_backup is not None:
