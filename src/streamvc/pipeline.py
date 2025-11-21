@@ -85,9 +85,11 @@ class StreamVCPipeline(nn.Module):
         if mode == "train":
             logits = self.content_head(units)
             outputs["content_logits"] = logits
-            outputs["codes"] = torch.stack(codes)
+            if codes:  # Only stack if codes list is not empty
+                outputs["codes"] = torch.stack(codes)
         else:
-            outputs["codes"] = torch.stack(codes)
+            if codes:  # Only stack if codes list is not empty
+                outputs["codes"] = torch.stack(codes)
         return outputs
 
     def _build_side_features(self, pitch_output, target_length: int) -> torch.Tensor:
