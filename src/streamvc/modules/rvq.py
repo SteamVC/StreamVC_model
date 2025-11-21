@@ -68,11 +68,15 @@ class ResidualVectorQuantizer(nn.Module):
         # x: (B, T, C) - already normalized in decoder (mean=0, std=1)
         residual = x
         quantized_sum = torch.zeros_like(x)
-        commitment_loss = 0.0
+        commitment_loss = torch.tensor(0.0, device=x.device, dtype=x.dtype)
         codes: List[torch.Tensor] = []
 
         # Progressive RVQ: only use first N quantizers during training
         active_codebooks = self.codebooks[:self.num_active_quantizers]
+
+        # If no active quantizers, return input as-is (bypass mode)
+        if self.num_active_quantizers == 0:
+            return x, commitment_loss, codes
 
         for q_idx, codebook in enumerate(active_codebooks):
             if self.config.use_cosine_sim:
