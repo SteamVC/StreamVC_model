@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Freeze speaker encoder weights (recommended for Phase 2-A)",
     )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="Resume training from checkpoint (e.g., runs/streamvc_phase1_ema/checkpoints/step_5000_2A.pt)",
+    )
     return parser.parse_args()
 
 
@@ -68,7 +74,18 @@ def main() -> None:
         if trainer.discriminator is not None:
             trainer.discriminator.to(trainer.device)
 
+    # Resume from checkpoint if specified
+    if args.resume is not None:
+        print(f"\n{'='*70}")
+        print(f"Resuming training from checkpoint:")
+        print(f"  {args.resume}")
+        trainer.load_checkpoint(args.resume)
+        print(f"✓ Resumed from step {trainer.step}")
+        print(f"{'='*70}\n")
+
     # Load pretrained speaker encoder if specified (Phase 2)
+    # NOTE: If both --resume and --speaker-pretrain are used,
+    # speaker-pretrain will overwrite the encoder from the resumed checkpoint
     if args.speaker_pretrain is not None:
         print(f"\n{'='*70}")
         print(f"Loading pretrained speaker encoder from:")

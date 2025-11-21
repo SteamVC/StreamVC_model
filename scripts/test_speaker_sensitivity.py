@@ -98,7 +98,7 @@ def test_sensitivity(
 
             for ref_idx, z_ref in enumerate(z_refs):
                 # VC
-                output = pipeline(source_audio, z_ref)["output"]  # (1, T)
+                output = pipeline(source_audio, z_ref)["audio"]  # (1, T)
                 outputs.append(output)
 
                 # Mel spectrogram
